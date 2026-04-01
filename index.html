@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Debug Agent</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#0a0a0f;--panel:#111118;--border:#1e1e2e;--accent:#00ff88;--accent2:#7c3aed;--warn:#ff4d6d;--text:#e2e2f0;--muted:#555570;--code-bg:#0d0d1a;--r:10px}
+    body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+
+    /* ══ AUTH SCREEN ══════════════════════════════════════════════════════════ */
+    #auth-screen{display:flex;align-items:center;justify-content:center;height:100vh;position:relative;overflow:hidden}
+    #auth-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+
+    /* orbs */
+    .orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.15;animation:orbFloat linear infinite;z-index:0;pointer-events:none}
+    .orb1{width:500px;height:500px;background:#7c3aed;top:-150px;left:-150px;animation-duration:20s}
+    .orb2{width:350px;height:350px;background:#00ff88;bottom:-100px;right:-80px;animation-duration:25s}
+    .orb3{width:280px;height:280px;background:#ff4d6d;top:35%;right:10%;animation-duration:17s}
+    @keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(35px,-25px) scale(1.06)}50%{transform:translate(-25px,35px) scale(.94)}75%{transform:translate(25px,25px) scale(1.04)}}
+
+    /* auth card */
+    .auth-box{
+      position:relative;z-index:2;width:420px;
+      background:rgba(10,10,20,.78);
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:22px;padding:42px 38px;
+      backdrop-filter:blur(28px);
+      box-shadow:0 40px 100px rgba(0,0,0,.75),inset 0 1px 0 rgba(255,255,255,.06);
+      animation:cardIn .65s cubic-bezier(.175,.885,.32,1.275) both;
+    }
+    @keyframes cardIn{from{opacity:0;transform:translateY(32px) scale(.96)}to{opacity:1;transform:none}}
+
+    /* animated gradient top border */
+    .auth-box::before{
+      content:'';position:absolute;top:0;left:8%;right:8%;height:1.5px;
+      background:linear-gradient(90deg,transparent,var(--accent) 40%,var(--accent2) 60%,transparent);
+      border-radius:2px;opacity:.8;
+      animation:borderGlow 3s ease-in-out infinite;
+    }
+    @keyframes borderGlow{0%,100%{opacity:.5;left:15%;right:15%}50%{opacity:1;left:5%;right:5%}}
+
+    /* logo row */
+    .auth-logo{display:flex;align-items:center;gap:12px;margin-bottom:30px}
+    .logo-icon{
+      width:38px;height:38px;background:var(--accent);border-radius:11px;
+      display:grid;place-items:center;font-size:19px;flex-shrink:0;
+      animation:logoPulse 2.8s ease-in-out infinite;
+      box-shadow:0 0 22px rgba(0,255,136,.45);
+    }
+    @keyframes logoPulse{0%,100%{box-shadow:0 0 22px rgba(0,255,136,.45);transform:scale(1)}50%{box-shadow:0 0 38px rgba(0,255,136,.75);transform:scale(1.07)}}
+    .logo-text{font-size:19px;font-weight:800;letter-spacing:.2px}
+    /* character-by-character drop-in */
+    .logo-text .c{display:inline-block;opacity:0;transform:translateY(-10px) scale(.8);animation:charIn .5s ease forwards}
+    @keyframes charIn{to{opacity:1;transform:none}}
+    .version-tag{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);background:rgba(0,255,136,.1);border:1px solid rgba(0,255,136,.25);padding:3px 9px;border-radius:20px;opacity:0;animation:fadeSlideUp .5s .6s ease forwards}
+    @keyframes fadeSlideUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+    /* tabs */
+    .auth-tabs{display:flex;gap:4px;margin-bottom:26px;background:rgba(0,0,0,.35);padding:4px;border-radius:11px;border:1px solid var(--border);position:relative;opacity:0;animation:fadeSlideUp .45s .3s ease forwards}
+    .auth-tab{flex:1;padding:10px;text-align:center;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;color:var(--muted);transition:all .28s;border:none;background:transparent;font-family:'Syne',sans-serif;letter-spacing:.3px;position:relative;z-index:1}
+    .auth-tab.active{color:#fff}
+    /* sliding pill indicator */
+    .tab-pill{
+      position:absolute;top:4px;bottom:4px;border-radius:7px;
+      background:linear-gradient(135deg,var(--accent2),#9333ea);
+      box-shadow:0 4px 18px rgba(124,58,237,.55);
+      transition:left .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1);
+      pointer-events:none;z-index:0;
+    }
+
+    /* form + stagger */
+    .auth-form{display:flex;flex-direction:column;gap:14px}
+
+    .input-wrap{
+      position:relative;
+      opacity:0;transform:translateY(16px);
+      animation:fieldIn .45s ease forwards;
+    }
+    .input-wrap:nth-child(1){animation-delay:.35s}
+    .input-wrap:nth-child(2){animation-delay:.43s}
+    .input-wrap:nth-child(3){animation-delay:.5s}
+    .input-wrap:nth-child(4){animation-delay:.57s}
+    .input-wrap:nth-child(5){animation-delay:.63s}
+    @keyframes fieldIn{to{opacity:1;transform:none}}
+
+    /* floating label inputs */
+    .input-wrap .iicon{position:absolute;left:13px;top:18px;font-size:14px;pointer-events:none;transition:all .22s ease;z-index:1}
+    .input-wrap input:focus ~ .iicon,
+    .input-wrap input:not(:placeholder-shown) ~ .iicon{top:12px;font-size:11px}
+
+    .float-lbl{
+      position:absolute;left:38px;top:50%;transform:translateY(-50%);
+      font-size:13px;color:var(--muted);pointer-events:none;
+      transition:all .22s ease;font-family:'Syne',sans-serif;z-index:1;
+    }
+    .input-wrap input:focus ~ .float-lbl,
+    .input-wrap input:not(:placeholder-shown) ~ .float-lbl{
+      top:9px;transform:none;font-size:9.5px;color:var(--accent2);
+      letter-spacing:.6px;text-transform:uppercase;font-weight:700;
+    }
+
+    .auth-form input{
+      width:100%;background:rgba(0,0,0,.38);
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:11px;color:var(--text);
+      font-family:'Syne',sans-serif;font-size:13px;
+      padding:22px 14px 8px 38px;outline:none;
+      transition:border-color .25s,box-shadow .25s,background .25s;
+    }
+    .auth-form input::placeholder{color:transparent}
+    .auth-form input:focus{
+      border-color:var(--accent2);
+      background:rgba(124,58,237,.09);
+      box-shadow:0 0 0 3px rgba(124,58,237,.18),0 4px 16px rgba(0,0,0,.3);
+    }
+
+    /* bottom glow sweep on focus */
+    .input-wrap::after{
+      content:'';position:absolute;bottom:0;left:50%;right:50%;height:2px;
+      background:linear-gradient(90deg,var(--accent2),var(--accent));
+      border-radius:0 0 11px 11px;transition:left .3s,right .3s;pointer-events:none;
+    }
+    .input-wrap:focus-within::after{left:6%;right:6%}
+
+    /* password strength */
+    .strength-bar{height:3px;border-radius:3px;background:rgba(255,255,255,.06);margin-top:-10px;overflow:hidden}
+    .strength-fill{height:100%;width:0;border-radius:3px;transition:width .4s ease,background .4s ease}
+
+    /* divider */
+    .div-line{display:flex;align-items:center;gap:10px;opacity:0;animation:fieldIn .4s .5s ease forwards}
+    .div-line::before,.div-line::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.06)}
+    .div-line span{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.5px;white-space:nowrap}
+
+    /* submit button */
+    .btn-auth{
+      background:linear-gradient(135deg,var(--accent),#00cc6a);
+      color:#000;border:none;border-radius:11px;padding:14px;
+      font-family:'Syne',sans-serif;font-weight:800;font-size:14px;letter-spacing:.3px;
+      cursor:pointer;position:relative;overflow:hidden;
+      box-shadow:0 4px 22px rgba(0,255,136,.32);
+      opacity:0;animation:fieldIn .45s .65s ease forwards;
+      transition:transform .22s,box-shadow .22s,filter .22s;
+    }
+    .btn-auth::before{
+      content:'';position:absolute;inset:0;
+      background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.28) 50%,transparent 100%);
+      transform:translateX(-100%);transition:transform .55s ease;
+    }
+    .btn-auth:hover::before{transform:translateX(100%)}
+    .btn-auth:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,255,136,.5);filter:brightness(1.06)}
+    .btn-auth:active{transform:translateY(0)}
+    .btn-auth:disabled{opacity:.55;cursor:not-allowed;transform:none}
+
+    /* ripple */
+    .rpl{position:absolute;border-radius:50%;background:rgba(0,0,0,.22);transform:scale(0);animation:rplAnim .55s linear;pointer-events:none}
+    @keyframes rplAnim{to{transform:scale(5);opacity:0}}
+
+    /* error */
+    .auth-err{color:var(--warn);font-size:11.5px;text-align:center;min-height:15px;opacity:0;animation:fieldIn .3s .7s ease forwards}
+    .auth-err.shake{animation:shake .35s ease}
+    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+
+    /* success overlay */
+    .succ{
+      position:absolute;inset:0;border-radius:22px;
+      background:rgba(8,8,18,.96);
+      display:none;flex-direction:column;align-items:center;justify-content:center;
+      gap:14px;text-align:center;padding:32px;z-index:20;backdrop-filter:blur(6px);
+    }
+    .succ.show{display:flex;animation:fadeIn .3s ease}
+    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+    .succ-ring{
+      width:76px;height:76px;border-radius:50%;
+      border:2.5px solid var(--accent);background:rgba(0,255,136,.08);
+      display:flex;align-items:center;justify-content:center;font-size:32px;
+      animation:ringPop .55s cubic-bezier(.175,.885,.32,1.275);
+      box-shadow:0 0 36px rgba(0,255,136,.35);
+    }
+    @keyframes ringPop{from{transform:scale(0) rotate(-25deg)}to{transform:scale(1) rotate(0)}}
+    .succ h2{font-size:21px;font-weight:800;color:var(--text)}
+    .succ p{font-size:12.5px;color:var(--muted);line-height:1.7;max-width:255px}
+    .succ-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:#a78bfa;font-size:11px;padding:4px 13px;border-radius:20px;font-family:'JetBrains Mono',monospace}
+    .dots{display:flex;gap:5px;margin-top:2px}
+    .dots span{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:dotB .85s ease-in-out infinite}
+    .dots span:nth-child(2){animation-delay:.17s}
+    .dots span:nth-child(3){animation-delay:.34s}
+    @keyframes dotB{0%,80%,100%{transform:scale(.65);opacity:.45}40%{transform:scale(1);opacity:1}}
+
+    /* re-animate when switching tabs */
+    .auth-panel{animation:panelSlide .3s ease}
+    @keyframes panelSlide{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+    .auth-panel.hidden{display:none!important}
+    .auth-panel.left-in{animation:panelSlideLeft .3s ease}
+    @keyframes panelSlideLeft{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+
+    /* ══ APP SCREEN ══════════════════════════════════════════════════════════ */
+    #app-screen{display:none;height:100vh;grid-template-columns:260px 420px 1fr;grid-template-rows:52px 1fr}
+    #app-screen.visible{display:grid}
+    header{grid-column:1/-1;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 20px}
+    header .logo{width:26px;height:26px;background:var(--accent);border-radius:6px;display:grid;place-items:center;font-size:14px}
+    header h1{font-size:14px;font-weight:800}
+    .header-tag{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.2);padding:3px 10px;border-radius:20px}
+    .user-pill{display:flex;align-items:center;gap:8px;background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);padding:4px 12px;border-radius:20px;font-size:12px;color:#a78bfa}
+    .btn-logout{background:transparent;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:'Syne',sans-serif}
+    .btn-logout:hover{border-color:var(--warn);color:var(--warn)}
+    .sidebar{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+    .sidebar-header{padding:12px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+    .sidebar-header .count{margin-left:auto;background:rgba(0,255,136,.1);color:var(--accent);font-size:10px;padding:2px 7px;border-radius:10px}
+    .session-search{padding:10px 12px;border-bottom:1px solid var(--border)}
+    .session-search input{width:100%;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:7px 10px;outline:none;font-family:'Syne',sans-serif}
+    .session-search input:focus{border-color:var(--accent2)}
+    .sessions-list{flex:1;overflow-y:auto}
+    .sessions-list::-webkit-scrollbar{width:3px}
+    .sessions-list::-webkit-scrollbar-thumb{background:var(--border)}
+    .session-item{padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;position:relative}
+    .session-item:hover{background:rgba(255,255,255,.03)}
+    .session-item.active{background:rgba(124,58,237,.1);border-left:3px solid var(--accent2)}
+    .session-lang{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--accent2);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+    .session-title{font-size:11.5px;color:var(--text);margin:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+    .session-meta{font-size:10px;color:var(--muted);display:flex;gap:8px;align-items:center}
+    .bug-badge{background:rgba(255,77,109,.12);color:var(--warn);font-size:9px;padding:1px 6px;border-radius:8px}
+    .del-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:13px;opacity:0;transition:opacity .2s}
+    .session-item:hover .del-btn{opacity:1}
+    .del-btn:hover{color:var(--warn)}
+    .empty-sessions{padding:32px 16px;text-align:center;color:var(--muted);font-size:12px;line-height:1.8}
+    .code-panel{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+    .panel-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+    .panel-header .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+    #lang-badge{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);padding:2px 8px;border-radius:4px;display:none}
+    #code-input{flex:1;background:var(--code-bg);border:none;outline:none;resize:none;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.7;padding:18px;caret-color:var(--accent)}
+    .code-actions{padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px}
+    .btn-primary{flex:1;background:var(--accent);color:#000;border:none;border-radius:var(--r);padding:10px;font-family:'Syne',sans-serif;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .18s}
+    .btn-primary:hover{filter:brightness(1.12);transform:translateY(-1px)}
+    .btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
+    .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-family:'Syne',sans-serif;font-weight:600;font-size:12px;cursor:pointer}
+    .btn-ghost:hover{color:var(--text);border-color:var(--muted)}
+    .chat-panel{display:flex;flex-direction:column;overflow:hidden}
+    .chat-area{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+    .chat-area::-webkit-scrollbar{width:3px}
+    .chat-area::-webkit-scrollbar-thumb{background:var(--border)}
+    .welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;color:var(--muted)}
+    .welcome .big-icon{font-size:44px}
+    .welcome h2{font-size:18px;color:var(--text)}
+    .welcome p{font-size:12px;max-width:280px;line-height:1.7}
+    .msg{max-width:92%;padding:13px 16px;border-radius:10px;font-size:13px;line-height:1.65;animation:fadeUp .22s ease}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    .msg-user{align-self:flex-end;background:rgba(0,255,136,.07);border:1px solid rgba(0,255,136,.15);font-family:'JetBrains Mono',monospace;font-size:11.5px}
+    .msg-agent{align-self:flex-start;background:var(--panel);border:1px solid var(--border);width:100%;max-width:100%}
+    .section-title{font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+    .lang-pill{display:inline-flex;align-items:center;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.25);padding:3px 10px;border-radius:20px;font-size:11px;font-family:'JetBrains Mono',monospace;margin-bottom:10px}
+    .bug-list{list-style:none;display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+    .bug-item{background:rgba(255,77,109,.07);border-left:3px solid var(--warn);padding:7px 10px;border-radius:0 5px 5px 0;font-size:12px;font-family:'JetBrains Mono',monospace;color:#ffa0b0}
+    .explanation-block{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:7px;padding:10px 12px;font-size:12.5px;line-height:1.7;margin-bottom:12px;white-space:pre-wrap}
+    .code-block{background:var(--code-bg);border:1px solid var(--border);border-radius:7px;overflow:hidden}
+    .code-block-header{padding:6px 12px;background:rgba(255,255,255,.04);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+    .code-block pre{padding:14px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.65;color:#c8d3f5;white-space:pre}
+    .copy-btn{background:transparent;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 7px;border-radius:3px;cursor:pointer;font-family:'Syne',sans-serif}
+    .copy-btn:hover{color:var(--accent);border-color:var(--accent)}
+    .save-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--accent);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.2);padding:2px 8px;border-radius:10px;margin-top:6px}
+    .bug-count{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:9px}
+    .bug-count.has-bugs{background:rgba(255,77,109,.12);color:var(--warn);border:1px solid rgba(255,77,109,.25)}
+    .bug-count.no-bugs{background:rgba(0,255,136,.1);color:var(--accent);border:1px solid rgba(0,255,136,.2)}
+    .loading-msg{align-self:flex-start;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:13px 18px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+    .spinner{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .chat-input-row{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;background:var(--panel)}
+    #chat-msg{flex:1;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:'Syne',sans-serif;font-size:12.5px;padding:9px 12px;outline:none;transition:border-color .18s}
+    #chat-msg:focus{border-color:var(--accent)}
+    .btn-send{background:var(--accent2);color:#fff;padding:9px 16px;border-radius:var(--r);border:none;font-size:12px;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer}
+    .btn-send:hover{filter:brightness(1.2)}
+    .divider{height:1px;background:var(--border);margin:10px 0}
+  </style>
+</head>
+<body>
+
+<!-- ═══════════ AUTH SCREEN ═══════════ -->
+<div id="auth-screen">
+  <canvas id="auth-canvas"></canvas>
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+
+  <div class="auth-box" id="auth-box">
+
+    <!-- success overlay -->
+    <div class="succ" id="succ">
+      <div class="succ-ring">✓</div>
+      <h2 id="succ-title">Welcome back!</h2>
+      <p id="succ-msg">Restoring your sessions…</p>
+      <div class="succ-badge" id="succ-badge">👤 user</div>
+      <div class="dots"><span></span><span></span><span></span></div>
+    </div>
+
+    <!-- logo -->
+    <div class="auth-logo">
+      <div class="logo-icon">🤖</div>
+      <div class="logo-text" id="logo-text"></div>
+      <span class="version-tag">v2.0</span>
+    </div>
+
+    <!-- tabs -->
+    <div class="auth-tabs" id="auth-tabs">
+      <div class="tab-pill" id="tab-pill"></div>
+      <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Login</button>
+      <button class="auth-tab" id="tab-reg" onclick="switchTab('register')">Register</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="login-panel" class="auth-panel">
+      <div class="auth-form">
+        <div class="input-wrap">
+          <span class="iicon">👤</span>
+          <input id="l-user" type="text" placeholder="u" onkeydown="if(event.key==='Enter')doLogin(event)"/>
+          <span class="float-lbl">Username</span>
+        </div>
+        <div class="input-wrap">
+          <span class="iicon">🔑</span>
+          <input id="l-pass" type="password" placeholder="p" onkeydown="if(event.key==='Enter')doLogin(event)"/>
+          <span class="float-lbl">Password</span>
+        </div>
+        <button class="btn-auth" id="login-btn" onclick="doLogin(event)">Login →</button>
+        <div class="auth-err" id="login-err"></div>
+      </div>
+    </div>
+
+    <!-- REGISTER -->
+    <div id="reg-panel" class="auth-panel hidden">
+      <div class="auth-form">
+        <div class="input-wrap">
+          <span class="iicon">✨</span>
+          <input id="r-name" type="text" placeholder="n"/>
+          <span class="float-lbl">Full Name</span>
+        </div>
+        <div class="input-wrap">
+          <span class="iicon">📧</span>
+          <input id="r-email" type="email" placeholder="e"/>
+          <span class="float-lbl">Email address</span>
+        </div>
+        <div class="div-line"><span>account credentials</span></div>
+        <div class="input-wrap">
+          <span class="iicon">👤</span>
+          <input id="r-user" type="text" placeholder="u"/>
+          <span class="float-lbl">Username (3-20 chars)</span>
+        </div>
+        <div class="input-wrap">
+          <span class="iicon">🔒</span>
+          <input id="r-pass" type="password" placeholder="p" oninput="checkStrength(this.value)" onkeydown="if(event.key==='Enter')doRegister(event)"/>
+          <span class="float-lbl">Password (min 6 chars)</span>
+        </div>
+        <div class="strength-bar"><div class="strength-fill" id="str-fill"></div></div>
+        <button class="btn-auth" id="reg-btn" onclick="doRegister(event)">Create Account →</button>
+        <div class="auth-err" id="reg-err"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════ APP SCREEN ═══════════ -->
+<div id="app-screen">
+  <header>
+    <div class="logo">🤖</div>
+    <h1>AI Debug Agent</h1>
+    <span class="header-tag">LangGraph · Multi-language</span>
+    <div class="user-pill">👤 <span id="user-display">user</span></div>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </header>
+  <div class="sidebar">
+    <div class="sidebar-header">📂 Sessions <span class="count" id="session-count">0</span></div>
+    <div class="session-search"><input type="text" placeholder="Search sessions…" oninput="searchSessions(this.value)"/></div>
+    <div class="sessions-list" id="sessions-list"><div class="empty-sessions">No sessions yet.<br/>Debug some code to get started!</div></div>
+  </div>
+  <div class="code-panel">
+    <div class="panel-header"><span class="dot"></span>Code Input<span id="lang-badge">auto</span></div>
+    <textarea id="code-input" spellcheck="false" placeholder="// Paste your buggy code here..."></textarea>
+    <div class="code-actions">
+      <button class="btn-ghost" onclick="clearAll()">Clear</button>
+      <button class="btn-primary" id="debug-btn" onclick="runDebug()">🔍 Analyze &amp; Fix</button>
+    </div>
+  </div>
+  <div class="chat-panel">
+    <div class="chat-area" id="chat-area">
+      <div class="welcome" id="welcome">
+        <div class="big-icon">🤖</div>
+        <h2>Welcome back!</h2>
+        <p>Paste code on the left and click <strong>Analyze &amp; Fix</strong>.</p>
+      </div>
+    </div>
+    <div class="chat-input-row">
+      <input id="chat-msg" type="text" placeholder="Ask a follow-up…" onkeydown="if(event.key==='Enter')sendChat()"/>
+      <button class="btn-send" onclick="sendChat()">Send ↑</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Particle Canvas ─────────────────────── */
+const cv=document.getElementById('auth-canvas'),cx=cv.getContext('2d');
+function rsz(){cv.width=innerWidth;cv.height=innerHeight}rsz();
+window.addEventListener('resize',rsz);
+const pts=Array.from({length:75},()=>({
+  x:Math.random()*innerWidth,y:Math.random()*innerHeight,
+  vx:(Math.random()-.5)*.42,vy:(Math.random()-.5)*.42,
+  r:Math.random()*1.9+.4,a:Math.random()*.5+.12,
+  c:Math.random()>.5?'0,255,136':'124,58,237'
+}));
+let mx=innerWidth/2,my=innerHeight/2;
+window.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY});
+function drawPts(){
+  cx.clearRect(0,0,cv.width,cv.height);
+  pts.forEach(p=>{
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0||p.x>cv.width)p.vx*=-1;
+    if(p.y<0||p.y>cv.height)p.vy*=-1;
+    const dx=mx-p.x,dy=my-p.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<130){p.x-=dx*.013;p.y-=dy*.013}
+    cx.beginPath();cx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    cx.fillStyle=`rgba(${p.c},${p.a})`;cx.fill();
+  });
+  for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++){
+    const dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<95){cx.beginPath();cx.moveTo(pts[i].x,pts[i].y);cx.lineTo(pts[j].x,pts[j].y);
+      cx.strokeStyle=`rgba(255,255,255,${(1-d/95)*.055})`;cx.lineWidth=.5;cx.stroke()}
+  }
+  requestAnimationFrame(drawPts);
+}
+drawPts();
+
+/* ── Logo type-on animation ─────────────── */
+const LOGO='AI Debug Agent';
+const lt=document.getElementById('logo-text');
+LOGO.split('').forEach((ch,i)=>{
+  const s=document.createElement('span');
+  s.className='c';
+  s.textContent=ch==='' ?' ':ch;
+  s.style.animationDelay=(i*.055+.1)+'s';
+  lt.appendChild(s);
+});
+
+/* ── Tab pill position ──────────────────── */
+function positionPill(tab){
+  const tabs=document.getElementById('auth-tabs');
+  const btn=document.getElementById(tab==='login'?'tab-login':'tab-reg');
+  const pill=document.getElementById('tab-pill');
+  const tr=tabs.getBoundingClientRect();
+  const br=btn.getBoundingClientRect();
+  pill.style.left=(br.left-tr.left)+'px';
+  pill.style.width=br.width+'px';
+}
+window.addEventListener('load',()=>setTimeout(()=>positionPill('login'),50));
+window.addEventListener('resize',()=>positionPill(currentTab));
+
+let currentTab='login';
+function switchTab(tab){
+  if(tab===currentTab)return;
+  const prev=currentTab;
+  currentTab=tab;
+  document.getElementById('tab-login').classList.toggle('active',tab==='login');
+  document.getElementById('tab-reg').classList.toggle('active',tab==='register');
+  positionPill(tab);
+  const lp=document.getElementById('login-panel');
+  const rp=document.getElementById('reg-panel');
+  if(tab==='login'){
+    rp.classList.add('hidden');
+    lp.classList.remove('hidden');
+    lp.classList.remove('left-in');
+    void lp.offsetWidth;
+    lp.classList.add('left-in');
+    retriggerFields(lp);
+  } else {
+    lp.classList.add('hidden');
+    rp.classList.remove('hidden');
+    rp.classList.remove('auth-panel');
+    void rp.offsetWidth;
+    rp.classList.add('auth-panel');
+    retriggerFields(rp);
+  }
+}
+
+function retriggerFields(panel){
+  const fields=panel.querySelectorAll('.input-wrap,.div-line,.btn-auth,.auth-err');
+  fields.forEach((f,i)=>{
+    f.style.animation='none';f.style.opacity='0';f.style.transform='translateY(14px)';
+    void f.offsetWidth;
+    f.style.animation='';
+    f.style.animationDelay=(i*.08+.05)+'s';
+  });
+}
+
+/* ── Password strength ──────────────────── */
+function checkStrength(val){
+  const fill=document.getElementById('str-fill');
+  let score=0;
+  if(val.length>=6)score++;
+  if(val.length>=10)score++;
+  if(/[A-Z]/.test(val))score++;
+  if(/[0-9]/.test(val))score++;
+  if(/[^A-Za-z0-9]/.test(val))score++;
+  const pct=[0,20,40,65,85,100][score];
+  const colors=['','#ff4d6d','#ff9500','#ffcc00','#00cc88','#00ff88'][score];
+  fill.style.width=pct+'%';
+  fill.style.background=colors;
+}
+
+/* ── Ripple ─────────────────────────────── */
+function ripple(btn,e){
+  const r=document.createElement('span');
+  const rect=btn.getBoundingClientRect();
+  const sz=Math.max(btn.offsetWidth,btn.offsetHeight);
+  r.className='rpl';
+  r.style.cssText=`width:${sz}px;height:${sz}px;left:${e.clientX-rect.left-sz/2}px;top:${e.clientY-rect.top-sz/2}px`;
+  btn.appendChild(r);setTimeout(()=>r.remove(),600);
+}
+
+/* ── Show success ───────────────────────── */
+function showSucc(username,isNew){
+  const ov=document.getElementById('succ');
+  document.getElementById('succ-title').textContent=isNew?`Welcome, ${username}!`:`Welcome back, ${username}!`;
+  document.getElementById('succ-msg').textContent=isNew?'Account created! Loading workspace…':'Restoring your sessions…';
+  document.getElementById('succ-badge').textContent=`👤 ${username}`;
+  ov.classList.add('show');
+}
+
+/* ── API & Auth ─────────────────────────── */
+const API='http://127.0.0.1:8000';
+let token=localStorage.getItem('debug_token')||'';
+let currentUser=JSON.parse(localStorage.getItem('debug_user')||'null');
+let chatHistory=[],lastCode='',allSessions=[];
+
+window.onload=()=>{if(token&&currentUser)showApp();};
+
+async function doLogin(e){
+  ripple(document.getElementById('login-btn'),e);
+  const u=document.getElementById('l-user').value.trim();
+  const p=document.getElementById('l-pass').value;
+  const err=document.getElementById('login-err');
+  err.textContent='';
+  if(!u||!p){err.textContent='Please fill all fields';err.classList.add('shake');setTimeout(()=>err.classList.remove('shake'),400);return;}
+  const btn=document.getElementById('login-btn');
+  btn.textContent='Logging in…';btn.disabled=true;
+  try{
+    const res=await fetch(`${API}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const data=await res.json();
+    if(!res.ok){err.textContent=data.detail||'Login failed';err.classList.add('shake');setTimeout(()=>err.classList.remove('shake'),400);btn.textContent='Login →';btn.disabled=false;return;}
+    saveAuth(data);showSucc(data.user.username,false);
+    setTimeout(()=>showApp(),1700);
+  }catch(ex){err.textContent='Cannot connect to server. Is it running?';btn.textContent='Login →';btn.disabled=false;}
+}
+
+async function doRegister(e){
+  ripple(document.getElementById('reg-btn'),e);
+  const name=document.getElementById('r-name').value.trim();
+  const email=document.getElementById('r-email').value.trim();
+  const user=document.getElementById('r-user').value.trim();
+  const pass=document.getElementById('r-pass').value;
+  const err=document.getElementById('reg-err');
+  err.textContent='';
+  if(!email||!user||!pass){err.textContent='Please fill all required fields';err.classList.add('shake');setTimeout(()=>err.classList.remove('shake'),400);return;}
+  if(user.length<3){err.textContent='Username must be at least 3 characters';return;}
+  if(pass.length<6){err.textContent='Password must be at least 6 characters';return;}
+  const btn=document.getElementById('reg-btn');
+  btn.textContent='Creating account…';btn.disabled=true;
+  try{
+    const res=await fetch(`${API}/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user,email,password:pass,full_name:name})});
+    const data=await res.json();
+    if(!res.ok){err.textContent=data.detail||'Registration failed';err.classList.add('shake');setTimeout(()=>err.classList.remove('shake'),400);btn.textContent='Create Account →';btn.disabled=false;return;}
+    saveAuth(data);showSucc(data.user.username,true);
+    setTimeout(()=>showApp(),1700);
+  }catch(ex){err.textContent='Cannot connect to server. Is it running?';btn.textContent='Create Account →';btn.disabled=false;}
+}
+
+function saveAuth(d){token=d.access_token;currentUser=d.user;localStorage.setItem('debug_token',token);localStorage.setItem('debug_user',JSON.stringify(d.user));}
+
+function logout(){
+  localStorage.removeItem('debug_token');localStorage.removeItem('debug_user');
+  token='';currentUser=null;
+  document.getElementById('app-screen').classList.remove('visible');
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('succ').classList.remove('show');
+  document.getElementById('login-btn').textContent='Login →';
+  document.getElementById('login-btn').disabled=false;
+}
+
+function showApp(){
+  document.getElementById('auth-screen').style.display='none';
+  document.getElementById('app-screen').classList.add('visible');
+  document.getElementById('user-display').textContent=currentUser?.username||'user';
+  loadSessions();
+}
+
+function authHeaders(){return{'Content-Type':'application/json','Authorization':`Bearer ${token}`};}
+
+async function loadSessions(){
+  try{const res=await fetch(`${API}/sessions/`,{headers:authHeaders()});if(res.status===401){logout();return;}allSessions=await res.json();renderSessions(allSessions);}catch(e){}
+}
+function renderSessions(sessions){
+  const list=document.getElementById('sessions-list');
+  document.getElementById('session-count').textContent=sessions.length;
+  if(!sessions.length){list.innerHTML='<div class="empty-sessions">No sessions yet.<br/>Debug some code to get started!</div>';return;}
+  list.innerHTML=sessions.map(s=>`<div class="session-item" onclick="loadSession('${s.session_id}')" id="si-${s.session_id}"><div class="session-lang">${escHtml(s.language)}</div><div class="session-title">${escHtml(s.title)}</div><div class="session-meta"><span>${formatDate(s.created_at)}</span><span class="bug-badge">🐛 ${s.bug_count}</span></div><button class="del-btn" onclick="deleteSession(event,'${s.session_id}')">✕</button></div>`).join('');
+}
+async function searchSessions(q){if(!q.trim()){renderSessions(allSessions);return;}try{const res=await fetch(`${API}/sessions/search/${encodeURIComponent(q)}`,{headers:authHeaders()});renderSessions(await res.json());}catch(e){}}
+async function loadSession(id){try{const res=await fetch(`${API}/sessions/${id}`,{headers:authHeaders()});const s=await res.json();document.querySelectorAll('.session-item').forEach(el=>el.classList.remove('active'));document.getElementById(`si-${id}`)?.classList.add('active');document.getElementById('code-input').value=s.code;lastCode=s.code;const b=document.getElementById('lang-badge');b.textContent=s.language;b.style.display='inline-block';clearChat();showDebugResult(s,null);}catch(e){}}
+async function deleteSession(e,id){e.stopPropagation();if(!confirm('Delete this session?'))return;try{await fetch(`${API}/sessions/${id}`,{method:'DELETE',headers:authHeaders()});await loadSessions();}catch(e){}}
+async function runDebug(){
+  const code=document.getElementById('code-input').value.trim();
+  if(!code)return alert('Please paste some code first.');
+  lastCode=code;const btn=document.getElementById('debug-btn');btn.disabled=true;
+  addMsg(escHtml(code.slice(0,250))+(code.length>250?'…':''),'user');
+  const loader=addLoading('Running debug pipeline…');
+  try{
+    const res=await fetch(`${API}/debug`,{method:'POST',headers:authHeaders(),body:JSON.stringify({code})});
+    if(res.status===401){loader.remove();logout();return;}
+    const data=await res.json();loader.remove();
+    const b=document.getElementById('lang-badge');b.textContent=data.language;b.style.display='inline-block';
+    showDebugResult(data,data.session_id);
+    chatHistory=[{role:'user',content:`Debug this:\n${code}`},{role:'assistant',content:`Found ${data.bug_count} bugs in ${data.language}.`}];
+    await loadSessions();
+  }catch(e){loader.remove();addMsg(`<span style="color:var(--warn)">❌ ${escHtml(e.message)}</span>`,'agent');}
+  finally{btn.disabled=false;}
+}
+function showDebugResult(data,sessionId){
+  const uid=Date.now();const hasBugs=data.bugs&&data.bugs.length>0;
+  const bugHtml=hasBugs?`<div class="section-title">Bugs Detected</div><ul class="bug-list">${data.bugs.map(b=>`<li class="bug-item">⚠ ${escHtml(b)}</li>`).join('')}</ul>`:'';
+  const expHtml=data.explanation?`<div class="section-title">Explanation</div><div class="explanation-block">${escHtml(data.explanation)}</div>`:'';
+  const fixHtml=data.fixed_code?`<div class="section-title">Fixed Code</div><div class="code-block"><div class="code-block-header"><span>${escHtml(data.language||'')}</span><button class="copy-btn" onclick="copyCode(this,'fc-${uid}')">Copy</button></div><pre id="fc-${uid}">${escHtml(data.fixed_code)}</pre></div>`:'';
+  const saved=sessionId?`<div class="save-badge">✅ Session saved automatically</div>`:'';
+  addMsg(`<div class="lang-pill">📌 ${escHtml(data.language||'')}</div><div class="bug-count ${hasBugs?'has-bugs':'no-bugs'}">${hasBugs?`🐛 ${data.bug_count||data.bugs.length} bug${(data.bug_count||data.bugs.length)!==1?'s':''} found`:'✅ No bugs found'}</div>${bugHtml}${hasBugs?'<div class="divider"></div>':''}${expHtml}${data.fixed_code?'<div class="divider"></div>':''}${fixHtml}${saved}`,'agent');
+}
+async function sendChat(){
+  const input=document.getElementById('chat-msg');const msg=input.value.trim();
+  if(!msg||!lastCode)return;input.value='';
+  addMsg(escHtml(msg),'user');const loader=addLoading('Thinking…');
+  try{
+    const res=await fetch(`${API}/chat`,{method:'POST',headers:authHeaders(),body:JSON.stringify({code:lastCode,message:msg,history:chatHistory})});
+    if(res.status===401){loader.remove();logout();return;}
+    const data=await res.json();loader.remove();
+    addMsg(`<div style="white-space:pre-wrap">${escHtml(data.reply)}</div>`,'agent');
+    chatHistory.push({role:'user',content:msg},{role:'assistant',content:data.reply});
+  }catch(e){loader.remove();addMsg(`<span style="color:var(--warn)">❌ ${escHtml(e.message)}</span>`,'agent');}
+}
+function clearAll(){document.getElementById('code-input').value='';clearChat();chatHistory=[];lastCode='';document.getElementById('lang-badge').style.display='none';document.querySelectorAll('.session-item').forEach(el=>el.classList.remove('active'));}
+function clearChat(){document.getElementById('chat-area').innerHTML='<div class="welcome" id="welcome"><div class="big-icon">🤖</div><h2>Welcome back!</h2><p>Paste code and click <strong>Analyze &amp; Fix</strong>.</p></div>';}
+function addMsg(html,type){const el=document.createElement('div');el.className=`msg msg-${type}`;el.innerHTML=html;const chat=document.getElementById('chat-area');document.getElementById('welcome')?.remove();chat.appendChild(el);chat.scrollTop=chat.scrollHeight;return el;}
+function addLoading(text){const el=document.createElement('div');el.className='loading-msg';el.innerHTML=`<div class="spinner"></div> ${text}`;const chat=document.getElementById('chat-area');document.getElementById('welcome')?.remove();chat.appendChild(el);chat.scrollTop=chat.scrollHeight;return el;}
+function copyCode(btn,id){navigator.clipboard.writeText(document.getElementById(id).textContent).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800)});}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function formatDate(iso){const d=new Date(iso);return d.toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});}
+</script>
+</body>
+</html>
