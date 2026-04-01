@@ -80,7 +80,8 @@ python server.py
 
 ## 📸 Demo
 
-(Add screenshots here)
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/55276ae3-b7a7-4109-a5d9-c08837d85625" />
+
 
 ---
 
