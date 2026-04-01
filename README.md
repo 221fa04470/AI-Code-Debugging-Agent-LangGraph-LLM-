@@ -84,6 +84,9 @@ python server.py
 
 
 ---
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/c9632bad-d1bb-4190-8eeb-b41adbbf724e" />
+<img width="1920" height="1080" alt="Screenshot (814)" src="https://github.com/user-attachments/assets/71733b16-c59c-4403-bc5e-7c0993975207" />
+
 
 ## 🎯 Use Cases
 
